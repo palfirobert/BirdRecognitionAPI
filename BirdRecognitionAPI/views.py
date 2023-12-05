@@ -4,7 +4,6 @@ from rest_framework.response import Response
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
 import base64
-from moviepy.editor import *
 
 
 @api_view(['POST'])
@@ -19,17 +18,19 @@ def getData(request):
         os.makedirs(sound_dir)
 
     # Use an absolute path
-    file_path = os.path.abspath(os.path.join(sound_dir, 'bird_sound.3gp'))
+    file_path = os.path.abspath(os.path.join(sound_dir, 'bird_sound.wav'))
 
     with open(file_path, 'wb') as f:
         f.write(sound_bytes)
-
 
     analyzer = Analyzer()
     recording = Recording(
         analyzer,
         file_path,
-        min_conf=0.25,
+        # lat=45.4244,
+        # lon=24.7463,
+        min_conf=0.1,
     )
     recording.analyze()
+    print(recording.detections)
     return Response(recording.detections)
