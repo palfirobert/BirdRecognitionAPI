@@ -57,3 +57,4 @@ flatbuffers~=23.5.26
 astunparse~=1.6.3
 djangorestframework~=3.14.0
 resampy~=0.4.2
+django-cors-headers~=4.3.1
