@@ -1,9 +1,10 @@
+import base64
 import os
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
-import base64
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 
 @api_view(['POST'])
