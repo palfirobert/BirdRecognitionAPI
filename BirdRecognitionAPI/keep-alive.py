@@ -14,4 +14,4 @@ def keep_alive():
 
 while True:
     keep_alive()
-    time.sleep(60)  # Sleep for 8 hours
+    time.sleep(28800)  # Sleep for 8 hours
