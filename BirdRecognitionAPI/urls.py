@@ -22,4 +22,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('',views.getData),
     path('predictionwithlocation', views.getDataWithLocation),
+    path('login', views.login),
+    path('signup',views.signup),
+    path('updateuserdetails',views.updateUserDetails),
 ]
