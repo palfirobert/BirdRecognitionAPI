@@ -94,25 +94,27 @@ def login(request):
         )
         if connection.is_connected():
             print("Connected to MySQL database")
-            # Updated query to also select user_id
-            query = "SELECT id, password FROM user WHERE email = %s"
+            query = "SELECT * FROM user WHERE email = %s"
             cursor = connection.cursor()
             try:
                 cursor.execute(query, (email,))
                 user_details = cursor.fetchone()
-                if user_details and bcrypt.checkpw(password, user_details[1].encode('utf-8')):
-                    user_id = user_details[0]
+                if user_details and bcrypt.checkpw(password, user_details[4].encode('utf-8')):
                     # Fetch additional user settings
                     settings_query = "SELECT language, use_location FROM user_settings WHERE user_id = %s"
-                    cursor.execute(settings_query, (user_id,))
+                    cursor.execute(settings_query, (user_details[0],))
                     user_settings = cursor.fetchone()
                     if user_settings:
                         print("User authenticated successfully")
                         return Response({
                             "message": "User authenticated successfully",
-                            "user_id": user_id,
+                            "user_id": user_details[0],
+                            "name": user_details[1],
+                            "surname": user_details[2],
+                            "email": user_details[3],
                             "language": user_settings[0],
-                            "use_location": user_settings[1]
+                            "use_location": user_settings[1],
+                            "password": user_details[4],
                         }, status=200)
                     else:
                         print("User settings not found")
