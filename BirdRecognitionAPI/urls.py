@@ -25,4 +25,7 @@ urlpatterns = [
     path('login', views.login),
     path('signup',views.signup),
     path('updateuserdetails',views.updateUserDetails),
+    path('addsound',views.insert_sound),
+    path('downloadusersounds',views.download_user_sounds),
+    path('deletesound',views.delete_sound)
 ]

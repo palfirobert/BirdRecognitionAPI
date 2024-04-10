@@ -1,19 +1,27 @@
 import base64
 import os
+import zipfile
+from datetime import datetime
+from io import BytesIO
 
+import bcrypt
 import mysql.connector
+from azure.storage.blob import BlobServiceClient
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
+from django.http import HttpResponse
 from mysql.connector import Error
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-import bcrypt
+
 
 @api_view(['POST'])
 def getData(request):
-    sound_data = request.body
+    sound_data = request.data.get("sound_data")
     # Decode the base64 encoded sound data (if it's base64 encoded)
     sound_bytes = base64.b64decode(sound_data)
+    user_id = request.data.get("user_id")
+    audio_name = request.data.get("audio_name")
 
     # Ensure the directory exists
     sound_dir = 'BirdRecognitionAPI/resources/sound'
@@ -34,6 +42,9 @@ def getData(request):
     )
     recording.analyze()
     print(recording.detections)
+
+    upload_sound_to_blob(user_id, audio_name)
+
     return Response(recording.detections)
 
 
@@ -43,6 +54,8 @@ def getDataWithLocation(request):
     lon = request.data.get('lon')
     lat = request.data.get('lat')
     sound_data = request.data.get('sound_data')
+    user_id = request.data.get("user_id")
+    audio_name = request.data.get("audio_name")
 
     # Proceed only if all required parameters are provided
     if lon is None or lat is None or sound_data is None:
@@ -74,6 +87,7 @@ def getDataWithLocation(request):
     print(lon)
     print(lat)
     print(recording.detections)
+    upload_sound_to_blob(user_id, audio_name)
     return Response(recording.detections)
 
 
@@ -138,8 +152,6 @@ def login(request):
     return Response({"error": "An unexpected error occurred"}, status=500)
 
 
-
-
 @api_view(['POST'])
 def signup(request):
     id = request.data.get('id')
@@ -194,6 +206,7 @@ def signup(request):
 
     return Response({"error": "An unexpected error occurred"}, status=500)
 
+
 @api_view(['PUT'])
 def updateUserDetails(request):
     # Deserialize the UserDetails object
@@ -242,3 +255,168 @@ def updateUserDetails(request):
 
     return Response({"An unexpected error occurred"}, status=500)
 
+
+@api_view(['POST'])
+def insert_sound(request):
+    data = request.data
+    name = data.get('name')
+    length = data.get('length')
+    blob_reference = data.get('blob_reference')
+    user_id = data.get('user_id')
+    time_added = data.get('time_added')
+
+    if not all([name, length, blob_reference, user_id, time_added]):
+        return Response({"error": "Missing required sound information"}, status=400)
+
+    # Convert milliseconds to seconds
+    try:
+        timestamp_seconds = int(time_added) / 1000.0
+        time_added_formatted = datetime.utcfromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')
+    except ValueError as e:
+        return Response({"error": f"Incorrect time_added format: {e}"}, status=400)
+
+    try:
+        connection = mysql.connector.connect(
+            host='bird-recognition-mysql-db.mysql.database.azure.com',
+            database='birdrecognitionapp',
+            user='licenta',
+            password='Admin123'
+        )
+        if connection.is_connected():
+            cursor = connection.cursor()
+
+            insert_query = """
+            INSERT INTO sounds (name, length, time_added, blob_reference, user_id)
+            VALUES (%s, %s, %s, %s, %s)
+            """
+            cursor.execute(insert_query, [name, length, time_added_formatted, blob_reference, user_id])
+            connection.commit()
+            return Response({"message": "Sound inserted successfully!"}, status=200)
+    except Error as e:
+        return Response({"error": str(e)}, status=500)
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+
+@api_view(['POST'])
+def download_user_sounds(request):
+    data = request.data
+    user_id = data.get('user_id')
+
+    if not user_id:
+        return Response({"error": "User ID is required"}, status=400)
+
+    container_name = "sounds"
+    connection_string = "BlobEndpoint=https://birdrecognitionapp.blob.core.windows.net/;QueueEndpoint=https://birdrecognitionapp.queue.core.windows.net/;FileEndpoint=https://birdrecognitionapp.file.core.windows.net/;TableEndpoint=https://birdrecognitionapp.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2030-01-01T17:44:07Z&st=2024-03-29T09:44:07Z&spr=https&sig=ZKmjN0p8xNBE%2FkSB97Bhw30GkP6Dqz87pzB2LVW7jhk%3D"
+
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    zip_buffer = BytesIO()
+
+    try:
+        container_client = blob_service_client.get_container_client(container_name)
+        user_prefix = f"{user_id}/"
+        sound_files = list(container_client.list_blobs(name_starts_with=user_prefix))
+
+        if not sound_files:
+            return Response({"message": "No sounds found for the user"}, status=404)
+
+        with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED, False) as zip_file:
+            for blob in sound_files:
+                blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob.name)
+                blob_data = blob_client.download_blob().readall()
+                download_file_name = blob.name.replace(user_prefix, "", 1)
+
+                zip_file.writestr(download_file_name, blob_data)
+
+        zip_buffer.seek(0)
+        response = HttpResponse(zip_buffer, content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename={user_id}_sounds.zip'
+
+        return response
+    except Exception as e:
+        return Response({"error": f"An error occurred: {e}"}, status=500)
+
+
+@api_view(['DELETE'])
+def delete_sound(request):
+    data = request.data
+    blob_reference = data.get('blob_reference')
+    user_id = data.get('user_id')
+
+    if not all([blob_reference, user_id]):
+        return Response({"error": "Missing required information (blob_reference, user_id)"}, status=400)
+
+    connection_string = "BlobEndpoint=https://birdrecognitionapp.blob.core.windows.net/;QueueEndpoint=https://birdrecognitionapp.queue.core.windows.net/;FileEndpoint=https://birdrecognitionapp.file.core.windows.net/;TableEndpoint=https://birdrecognitionapp.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2030-01-01T17:44:07Z&st=2024-03-29T09:44:07Z&spr=https&sig=ZKmjN0p8xNBE%2FkSB97Bhw30GkP6Dqz87pzB2LVW7jhk%3D"
+    container_name = "sounds"
+
+    try:
+        delete_blob_from_storage(blob_reference, container_name, connection_string,)
+
+        # Now, delete the entry from your database
+        connection = mysql.connector.connect(
+            host='bird-recognition-mysql-db.mysql.database.azure.com',
+            database='birdrecognitionapp',
+            user='licenta',
+            password='Admin123'
+        )
+        if connection.is_connected():
+            cursor = connection.cursor()
+            delete_query = "DELETE FROM sounds WHERE user_id = %s"
+            cursor.execute(delete_query, (user_id,))
+            connection.commit()
+
+            if cursor.rowcount == 0:
+                return Response({"Sound not found in the database."}, status=404)
+
+            return Response({"Sound deleted successfully"}, status=200)
+    except Error as db_error:
+        return Response({f"Database error: {str(db_error)}"}, status=500)
+    except Exception as e:
+        return Response({f"Storage error: {str(e)}"}, status=500)
+    finally:
+        if 'connection' in locals() and connection.is_connected():
+            connection.close()
+
+
+def upload_sound_to_blob(user_id, audio_name):
+    # Replace with your Azure Blob Storage connection string
+    connection_string = "BlobEndpoint=https://birdrecognitionapp.blob.core.windows.net/;QueueEndpoint=https://birdrecognitionapp.queue.core.windows.net/;FileEndpoint=https://birdrecognitionapp.file.core.windows.net/;TableEndpoint=https://birdrecognitionapp.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2030-01-01T17:44:07Z&st=2024-03-29T09:44:07Z&spr=https&sig=ZKmjN0p8xNBE%2FkSB97Bhw30GkP6Dqz87pzB2LVW7jhk%3D"
+
+    # Name of the container you want to upload to
+    container_name = "sounds/" + user_id
+
+    # Local path to the file you want to upload
+    local_file_path = "BirdRecognitionAPI/resources/sound/bird_sound.wav"
+
+    # Name you want to save the file as in the container
+    blob_name = audio_name
+
+    # Create a blob service client
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+
+    # Create a blob client using the local file name as the name for the blob
+    blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+
+    # Upload the sound file
+    with open(local_file_path, "rb") as data:
+        blob_client.upload_blob(data, overwrite=True)
+
+    print(f"'{blob_name}' uploaded to container '{container_name}' successfully.")
+
+
+def delete_blob_from_storage(blob_name, container_name, connection_string):
+    try:
+        # Create a BlobServiceClient using a connection string
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+
+        # Create a BlobClient to interact with a specific blob
+        blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+
+        # Delete the blob
+        blob_client.delete_blob()
+
+        print(f"The blob '{blob_name}' has been deleted from container '{container_name}'.")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
