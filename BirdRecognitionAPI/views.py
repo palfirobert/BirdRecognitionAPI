@@ -346,6 +346,7 @@ def delete_sound(request):
     data = request.data
     blob_reference = data.get('blob_reference')
     user_id = data.get('user_id')
+    file_name=data.get('file_name')
 
     if not all([blob_reference, user_id]):
         return Response({"error": "Missing required information (blob_reference, user_id)"}, status=400)
@@ -365,8 +366,8 @@ def delete_sound(request):
         )
         if connection.is_connected():
             cursor = connection.cursor()
-            delete_query = "DELETE FROM sounds WHERE user_id = %s"
-            cursor.execute(delete_query, (user_id,))
+            delete_query = "DELETE FROM sounds WHERE user_id = %s AND name = %s"
+            cursor.execute(delete_query, (user_id, file_name))
             connection.commit()
 
             if cursor.rowcount == 0:
