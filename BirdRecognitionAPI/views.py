@@ -22,6 +22,7 @@ def getData(request):
     sound_bytes = base64.b64decode(sound_data)
     user_id = request.data.get("user_id")
     audio_name = request.data.get("audio_name")
+    is_new_recording=request.data.get("is_new_recording")
 
     # Ensure the directory exists
     sound_dir = 'BirdRecognitionAPI/resources/sound'
@@ -42,8 +43,8 @@ def getData(request):
     )
     recording.analyze()
     print(recording.detections)
-
-    upload_sound_to_blob(user_id, audio_name)
+    if is_new_recording:
+        upload_sound_to_blob(user_id, audio_name)
 
     return Response(recording.detections)
 
@@ -56,6 +57,7 @@ def getDataWithLocation(request):
     sound_data = request.data.get('sound_data')
     user_id = request.data.get("user_id")
     audio_name = request.data.get("audio_name")
+    is_new_recording=request.data.get("is_new_recording")
 
     # Proceed only if all required parameters are provided
     if lon is None or lat is None or sound_data is None:
@@ -87,7 +89,8 @@ def getDataWithLocation(request):
     print(lon)
     print(lat)
     print(recording.detections)
-    upload_sound_to_blob(user_id, audio_name)
+    if is_new_recording:
+        upload_sound_to_blob(user_id, audio_name)
     return Response(recording.detections)
 
 
@@ -403,6 +406,43 @@ def upload_sound_to_blob(user_id, audio_name):
         blob_client.upload_blob(data, overwrite=True)
 
     print(f"'{blob_name}' uploaded to container '{container_name}' successfully.")
+
+
+@api_view(['GET'])
+def get_creation_date_of_sounds(request):
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({"error": "Missing required information (user_id)"}, status=400)
+
+    connection_string = "BlobEndpoint=https://birdrecognitionapp.blob.core.windows.net/;QueueEndpoint=https://birdrecognitionapp.queue.core.windows.net/;FileEndpoint=https://birdrecognitionapp.file.core.windows.net/;TableEndpoint=https://birdrecognitionapp.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2030-01-01T17:44:07Z&st=2024-03-29T09:44:07Z&spr=https&sig=ZKmjN0p8xNBE%2FkSB97Bhw30GkP6Dqz87pzB2LVW7jhk%3D"
+
+    try:
+        connection = mysql.connector.connect(
+            host='bird-recognition-mysql-db.mysql.database.azure.com',
+            database='birdrecognitionapp',
+            user='licenta',
+            password='Admin123'
+        )
+
+        if connection.is_connected():
+            cursor = connection.cursor(dictionary=True)  # Use `dictionary=True` to get results as dict
+            query = "SELECT name, UNIX_TIMESTAMP(time_added) AS time_added FROM sounds WHERE user_id = %s"
+            cursor.execute(query, (user_id,))
+            sounds = cursor.fetchall()
+
+            # Convert to hashmap format: {sound_name: time_added_timestamp}
+            sounds_map = {sound['name']: sound['time_added'] for sound in sounds}
+
+            return Response(sounds_map, status=200)
+
+    except Error as db_error:
+        return Response({f"Database error: {str(db_error)}"}, status=500)
+    except Exception as e:
+        return Response({f"Error: {str(e)}"}, status=500)
+    finally:
+        if 'connection' in locals() and connection.is_connected():
+            connection.close()
 
 
 def delete_blob_from_storage(blob_name, container_name, connection_string):

@@ -27,5 +27,6 @@ urlpatterns = [
     path('updateuserdetails',views.updateUserDetails),
     path('addsound',views.insert_sound),
     path('downloadusersounds',views.download_user_sounds),
-    path('deletesound',views.delete_sound)
+    path('deletesound',views.delete_sound),
+    path('getcreationdate',views.get_creation_date_of_sounds)
 ]
