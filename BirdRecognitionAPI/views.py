@@ -10,6 +10,7 @@ from azure.storage.blob import BlobServiceClient
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
 from django.http import HttpResponse
+from django.http import JsonResponse
 from mysql.connector import Error
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -22,7 +23,7 @@ def getData(request):
     sound_bytes = base64.b64decode(sound_data)
     user_id = request.data.get("user_id")
     audio_name = request.data.get("audio_name")
-    is_new_recording=request.data.get("is_new_recording")
+    is_new_recording = request.data.get("is_new_recording")
 
     # Ensure the directory exists
     sound_dir = 'BirdRecognitionAPI/resources/sound'
@@ -57,7 +58,7 @@ def getDataWithLocation(request):
     sound_data = request.data.get('sound_data')
     user_id = request.data.get("user_id")
     audio_name = request.data.get("audio_name")
-    is_new_recording=request.data.get("is_new_recording")
+    is_new_recording = request.data.get("is_new_recording")
 
     # Proceed only if all required parameters are provided
     if lon is None or lat is None or sound_data is None:
@@ -303,6 +304,54 @@ def insert_sound(request):
 
 
 @api_view(['POST'])
+def insert_observation(request):
+    data = request.data
+    observation_date = data.get('observationDate')
+    species = data.get('species')
+    number = data.get('number')
+    observer = data.get('observer')
+    upload_date = data.get('uploadDate')
+    location = data.get('location')
+    user_id = data.get('userId')
+    sound_id = data.get('soundId')
+
+    if not all([observation_date, species, number, observer, upload_date, location, user_id, sound_id]):
+        return Response({"error": "Missing required observation information"}, status=400)
+
+    try:
+        connection = mysql.connector.connect(
+            host='bird-recognition-mysql-db.mysql.database.azure.com',
+            database='birdrecognitionapp',
+            user='licenta',
+            password='Admin123'
+        )
+        if connection.is_connected():
+            cursor = connection.cursor()
+
+            # Delete existing observation for the same sound_id
+            delete_query = "DELETE FROM observation_sheet WHERE sound_id = %s"
+            cursor.execute(delete_query, [sound_id])
+
+            observation_date_formatted = datetime.utcfromtimestamp(int(observation_date) / 1000).strftime(
+                '%Y-%m-%d %H:%M:%S')
+            upload_date_formatted = datetime.utcfromtimestamp(int(upload_date) / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            insert_query = """
+            INSERT INTO observation_sheet (observation_date, species, number, observer, upload_date, location, user_id, sound_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(insert_query,
+                           [observation_date_formatted, species, number, observer, upload_date_formatted, location,
+                            user_id, sound_id])
+            connection.commit()
+            return Response({"message": "Observation inserted successfully!"}, status=200)
+    except Error as e:
+        return Response({"error": str(e)}, status=500)
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+
+@api_view(['POST'])
 def download_user_sounds(request):
     data = request.data
     user_id = data.get('user_id')
@@ -346,7 +395,7 @@ def delete_sound(request):
     data = request.data
     blob_reference = data.get('blob_reference')
     user_id = data.get('user_id')
-    file_name=data.get('file_name')
+    file_name = data.get('file_name')
 
     if not all([blob_reference, user_id]):
         return Response({"error": "Missing required information (blob_reference, user_id)"}, status=400)
@@ -355,7 +404,7 @@ def delete_sound(request):
     container_name = "sounds"
 
     try:
-        delete_blob_from_storage(blob_reference, container_name, connection_string,)
+        delete_blob_from_storage(blob_reference, container_name, connection_string, )
 
         # Now, delete the entry from your database
         connection = mysql.connector.connect(
@@ -443,6 +492,51 @@ def get_creation_date_of_sounds(request):
         return Response({f"Error: {str(e)}"}, status=500)
     finally:
         if 'connection' in locals() and connection.is_connected():
+            connection.close()
+
+
+@api_view(['GET'])
+def get_observations_by_user(request, user_id):
+    try:
+        connection = mysql.connector.connect(
+            host='bird-recognition-mysql-db.mysql.database.azure.com',
+            database='birdrecognitionapp',
+            user='licenta',
+            password='Admin123'
+        )
+        if connection.is_connected():
+            cursor = connection.cursor(dictionary=True)  # use dictionary=True to get results as dictionaries
+
+            # Select all observations for the given user ID
+            select_query = """
+            SELECT observation_date, species, number, observer, upload_date, location, user_id, sound_id
+            FROM observation_sheet
+            WHERE user_id = %s
+            """
+            cursor.execute(select_query, (user_id,))
+
+            results = cursor.fetchall()
+            # Format the results to match the DTO structure
+            observations = []
+            for row in results:
+                observation = {
+                    'observationDate': row['observation_date'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'species': row['species'],
+                    'number': row['number'],
+                    'observer': row['observer'],
+                    'uploadDate': row['upload_date'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'location': row['location'],
+                    'userId': row['user_id'],
+                    'soundId': row['sound_id']
+                }
+                observations.append(observation)
+
+            return JsonResponse(observations, safe=False)
+
+    except Error as e:
+        return JsonResponse({"error": str(e)}, status=500)
+    finally:
+        if connection and connection.is_connected():
             connection.close()
 
 
