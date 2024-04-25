@@ -314,7 +314,14 @@ def insert_observation(request):
     location = data.get('location')
     user_id = data.get('userId')
     sound_id = data.get('soundId')
-
+    print("Observation Date:", observation_date)
+    print("Species:", species)
+    print("Number of Observations:", number)
+    print("Observer:", observer)
+    print("Upload Date:", upload_date)
+    print("Location:", location)
+    print("User ID:", user_id)
+    print("Sound ID:", sound_id)
     if not all([observation_date, species, number, observer, upload_date, location, user_id, sound_id]):
         return Response({"error": "Missing required observation information"}, status=400)
 
