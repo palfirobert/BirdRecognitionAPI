@@ -268,6 +268,7 @@ def insert_sound(request):
     blob_reference = data.get('blob_reference')
     user_id = data.get('user_id')
     time_added = data.get('time_added')
+    id = data.get('id')
 
     if not all([name, length, blob_reference, user_id, time_added]):
         return Response({"error": "Missing required sound information"}, status=400)
@@ -290,10 +291,10 @@ def insert_sound(request):
             cursor = connection.cursor()
 
             insert_query = """
-            INSERT INTO sounds (name, length, time_added, blob_reference, user_id)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO sounds (id,name, length, time_added, blob_reference, user_id)
+            VALUES (%s,%s, %s, %s, %s, %s)
             """
-            cursor.execute(insert_query, [name, length, time_added_formatted, blob_reference, user_id])
+            cursor.execute(insert_query, [id,name, length, time_added_formatted, blob_reference, user_id])
             connection.commit()
             return Response({"message": "Sound inserted successfully!"}, status=200)
     except Error as e:
@@ -314,14 +315,7 @@ def insert_observation(request):
     location = data.get('location')
     user_id = data.get('userId')
     sound_id = data.get('soundId')
-    print("Observation Date:", observation_date)
-    print("Species:", species)
-    print("Number of Observations:", number)
-    print("Observer:", observer)
-    print("Upload Date:", upload_date)
-    print("Location:", location)
-    print("User ID:", user_id)
-    print("Sound ID:", sound_id)
+
     if not all([observation_date, species, number, observer, upload_date, location, user_id, sound_id]):
         return Response({"error": "Missing required observation information"}, status=400)
 
@@ -357,6 +351,36 @@ def insert_observation(request):
         if connection and connection.is_connected():
             connection.close()
 
+
+@api_view(['DELETE'])
+def delete_observation(request):
+    sound_id = request.data.get('soundId')
+
+    if not sound_id:
+        return Response({"error": "Missing required sound ID"}, status=400)
+
+    try:
+        connection = mysql.connector.connect(
+            host='bird-recognition-mysql-db.mysql.database.azure.com',
+            database='birdrecognitionapp',
+            user='licenta',
+            password='Admin123'
+        )
+        if connection.is_connected():
+            cursor = connection.cursor()
+            delete_query = "DELETE FROM observation_sheet WHERE sound_id = %s"
+            cursor.execute(delete_query, [sound_id])
+            connection.commit()
+
+            if cursor.rowcount > 0:
+                return Response({"message": "Observation deleted successfully!"}, status=200)
+            else:
+                return Response({"error": "Observation not found"}, status=404)
+    except Error as e:
+        return Response({"error": str(e)}, status=500)
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
 
 @api_view(['POST'])
 def download_user_sounds(request):
