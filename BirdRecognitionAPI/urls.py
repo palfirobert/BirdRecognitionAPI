@@ -32,5 +32,7 @@ urlpatterns = [
     path('getcreationdate', views.get_creation_date_of_sounds),
     path('addobservationsheet', views.insert_observation),
     path('observations/<str:user_id>/', views.get_observations_by_user),
-    path('deleteobservationsheet',views.delete_observation)
+    path('deleteobservationsheet',views.delete_observation),
+    path('send_code', views.send_security_code),
+    path('update_password', views.update_password),
 ]

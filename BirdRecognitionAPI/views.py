@@ -3,7 +3,7 @@ import os
 import zipfile
 from datetime import datetime
 from io import BytesIO
-
+from django.core.mail import send_mail
 import bcrypt
 import mysql.connector
 from azure.storage.blob import BlobServiceClient
@@ -586,3 +586,63 @@ def delete_blob_from_storage(blob_name, container_name, connection_string):
 
     except Exception as e:
         print(f"An error occurred: {e}")
+
+
+@api_view(['POST'])
+def send_security_code(request):
+    data = request.data
+    email = data.get('email')
+    security_code=data.get('securityCode')
+    if not email:
+        return JsonResponse({'error': 'Email is required'}, status=400)
+
+    # Send email with the security code
+    send_mail(
+        'Your Security Code',
+        f'Your security code is {security_code}.',
+        'from@example.com',  # Change to your actual sender email
+        [email],
+        fail_silently=False,
+    )
+
+    # Store the security code in the session for verification later
+    request.session['security_code'] = security_code
+    request.session['email'] = email
+
+    return JsonResponse({'message': 'Security code sent successfully.'})
+
+
+
+@api_view(['POST'])
+def update_password(request):
+    email = request.data.get('email')
+    new_password = request.data.get('newPassword')
+
+    # Basic validation for required fields
+    if not email or not new_password:
+        return Response({"error": "User ID and new password are required"}, status=400)
+
+    try:
+        connection = mysql.connector.connect(
+            host='bird-recognition-mysql-db.mysql.database.azure.com',
+            database='birdrecognitionapp',
+            user='licenta',
+            password='Admin123'
+        )
+        if connection.is_connected():
+            cursor = connection.cursor()
+
+            # Update user's password
+            update_query = "UPDATE user SET password = %s WHERE email = %s"
+            cursor.execute(update_query, (new_password, email))
+            connection.commit()
+
+            return Response({"message": "Password updated successfully"}, status=200)
+    except Error as e:
+        return Response({"error": str(e)}, status=500)
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+    return Response({"error": "An unexpected error occurred"}, status=500)
+
