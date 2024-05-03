@@ -334,9 +334,14 @@ def insert_observation(request):
             delete_query = "DELETE FROM observation_sheet WHERE sound_id = %s"
             cursor.execute(delete_query, [sound_id])
 
-            observation_date_formatted = datetime.fromtimestamp(int(observation_date) / 1000).strftime(
-                '%Y-%m-%d %H:%M:%S')
-            upload_date_formatted = datetime.fromtimestamp(int(upload_date) / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            # Convert and format timestamps with an added 2 hours
+            observation_date_formatted = datetime.fromtimestamp(int(observation_date) / 1000) + timedelta(hours=2)
+            observation_date_formatted = observation_date_formatted.strftime('%Y-%m-%d %H:%M:%S')
+
+            upload_date_formatted = datetime.fromtimestamp(int(upload_date) / 1000) + timedelta(hours=2)
+            upload_date_formatted = upload_date_formatted.strftime('%Y-%m-%d %H:%M:%S')
+
+            # Insert the observation
             insert_query = """
             INSERT INTO observation_sheet (observation_date, species, number, observer, upload_date, location, user_id, sound_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
