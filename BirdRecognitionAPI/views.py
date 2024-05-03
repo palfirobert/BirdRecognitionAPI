@@ -3,12 +3,13 @@ import os
 import zipfile
 from datetime import datetime
 from io import BytesIO
-from django.core.mail import send_mail
+
 import bcrypt
 import mysql.connector
 from azure.storage.blob import BlobServiceClient
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
+from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.http import JsonResponse
 from mysql.connector import Error
@@ -294,7 +295,7 @@ def insert_sound(request):
             INSERT INTO sounds (id,name, length, time_added, blob_reference, user_id)
             VALUES (%s,%s, %s, %s, %s, %s)
             """
-            cursor.execute(insert_query, [id,name, length, time_added_formatted, blob_reference, user_id])
+            cursor.execute(insert_query, [id, name, length, time_added_formatted, blob_reference, user_id])
             connection.commit()
             return Response({"message": "Sound inserted successfully!"}, status=200)
     except Error as e:
@@ -333,9 +334,9 @@ def insert_observation(request):
             delete_query = "DELETE FROM observation_sheet WHERE sound_id = %s"
             cursor.execute(delete_query, [sound_id])
 
-            observation_date_formatted = datetime.utcfromtimestamp(int(observation_date) / 1000).strftime(
+            observation_date_formatted = datetime.fromtimestamp(int(observation_date) / 1000).strftime(
                 '%Y-%m-%d %H:%M:%S')
-            upload_date_formatted = datetime.utcfromtimestamp(int(upload_date) / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            upload_date_formatted = datetime.fromtimestamp(int(upload_date) / 1000).strftime('%Y-%m-%d %H:%M:%S')
             insert_query = """
             INSERT INTO observation_sheet (observation_date, species, number, observer, upload_date, location, user_id, sound_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -355,10 +356,16 @@ def insert_observation(request):
 @api_view(['DELETE'])
 def delete_observation(request):
     sound_id = request.data.get('soundId')
+    upload_date = request.data.get("uploadDate")
+    location = request.data.get("location")
+    user_id = request.data.get("userId")
+    print(sound_id)
+    print(upload_date)
+    print(location)
+    print(user_id)
 
-    if not sound_id:
-        return Response({"error": "Missing required sound ID"}, status=400)
-
+    # Initialize database connection outside of the try block
+    connection = None
     try:
         connection = mysql.connector.connect(
             host='bird-recognition-mysql-db.mysql.database.azure.com',
@@ -368,19 +375,34 @@ def delete_observation(request):
         )
         if connection.is_connected():
             cursor = connection.cursor()
-            delete_query = "DELETE FROM observation_sheet WHERE sound_id = %s"
-            cursor.execute(delete_query, [sound_id])
+
+            # Check if sound_id is provided
+            if sound_id:
+                delete_query = "DELETE FROM observation_sheet WHERE sound_id = %s"
+                cursor.execute(delete_query, [sound_id])
+            else:
+                # Delete based on user_id, location, and upload_date if sound_id is not provided
+                delete_query = """
+                DELETE FROM observation_sheet
+                WHERE user_id = %s AND location = %s AND upload_date = %s
+                """
+                cursor.execute(delete_query, [user_id, location, upload_date])
+
             connection.commit()
 
             if cursor.rowcount > 0:
                 return Response({"message": "Observation deleted successfully!"}, status=200)
             else:
                 return Response({"error": "Observation not found"}, status=404)
+
     except Error as e:
         return Response({"error": str(e)}, status=500)
     finally:
         if connection and connection.is_connected():
             connection.close()
+
+    return Response({"error": "Database connection could not be established"}, status=500)
+
 
 @api_view(['POST'])
 def download_user_sounds(request):
@@ -592,7 +614,7 @@ def delete_blob_from_storage(blob_name, container_name, connection_string):
 def send_security_code(request):
     data = request.data
     email = data.get('email')
-    security_code=data.get('securityCode')
+    security_code = data.get('securityCode')
     if not email:
         return JsonResponse({'error': 'Email is required'}, status=400)
 
@@ -610,7 +632,6 @@ def send_security_code(request):
     request.session['email'] = email
 
     return JsonResponse({'message': 'Security code sent successfully.'})
-
 
 
 @api_view(['POST'])
@@ -645,4 +666,3 @@ def update_password(request):
             connection.close()
 
     return Response({"error": "An unexpected error occurred"}, status=500)
-
