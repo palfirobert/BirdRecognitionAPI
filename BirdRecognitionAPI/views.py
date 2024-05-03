@@ -335,10 +335,10 @@ def insert_observation(request):
             cursor.execute(delete_query, [sound_id])
 
             # Convert and format timestamps with an added 2 hours
-            observation_date_formatted = datetime.fromtimestamp(int(observation_date) / 1000) + timedelta(hours=2)
+            observation_date_formatted = datetime.fromtimestamp(int(observation_date) / 1000) + timedelta(hours=3)
             observation_date_formatted = observation_date_formatted.strftime('%Y-%m-%d %H:%M:%S')
 
-            upload_date_formatted = datetime.fromtimestamp(int(upload_date) / 1000) + timedelta(hours=2)
+            upload_date_formatted = datetime.fromtimestamp(int(upload_date) / 1000) + timedelta(hours=3)
             upload_date_formatted = upload_date_formatted.strftime('%Y-%m-%d %H:%M:%S')
 
             # Insert the observation
