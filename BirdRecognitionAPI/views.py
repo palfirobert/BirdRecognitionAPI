@@ -3,8 +3,9 @@ import os
 import zipfile
 from datetime import datetime, timedelta
 from io import BytesIO
-
+import gzip
 import bcrypt
+import io
 import mysql.connector
 from azure.storage.blob import BlobServiceClient
 from birdnetlib import Recording
@@ -19,7 +20,7 @@ from rest_framework.response import Response
 
 @api_view(['POST'])
 def getData(request):
-    sound_data = request.data.get("sound_data")
+    sound_data = decompress_string(request.data.get("sound_data"))
     # Decode the base64 encoded sound data (if it's base64 encoded)
     sound_bytes = base64.b64decode(sound_data)
     user_id = request.data.get("user_id")
@@ -56,7 +57,7 @@ def getDataWithLocation(request):
     # Retrieve lon and lat values from the request data
     lon = request.data.get('lon')
     lat = request.data.get('lat')
-    sound_data = request.data.get('sound_data')
+    sound_data = decompress_string(request.data.get("sound_data"))
     user_id = request.data.get("user_id")
     audio_name = request.data.get("audio_name")
     is_new_recording = request.data.get("is_new_recording")
@@ -671,3 +672,10 @@ def update_password(request):
             connection.close()
 
     return Response({"error": "An unexpected error occurred"}, status=500)
+
+
+def decompress_string(compressed_data_base64):
+    compressed_data = base64.b64decode(compressed_data_base64)
+    with gzip.GzipFile(fileobj=io.BytesIO(compressed_data), mode='rb') as f:
+        decompressed_data = f.read()
+    return decompressed_data.decode('utf-8')
