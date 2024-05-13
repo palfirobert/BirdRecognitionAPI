@@ -14,11 +14,18 @@ from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.http import JsonResponse
 from mysql.connector import Error
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-
-
+from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import IsAuthenticated
 @api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def getData(request):
     sound_data = decompress_string(request.data.get("sound_data"))
     # Decode the base64 encoded sound data (if it's base64 encoded)
@@ -53,6 +60,8 @@ def getData(request):
 
 
 @api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def getDataWithLocation(request):
     # Retrieve lon and lat values from the request data
     lon = request.data.get('lon')
@@ -98,6 +107,7 @@ def getDataWithLocation(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def login(request):
     email = request.data.get('email')
     password = request.data.get('password').encode('utf-8')  # Encode password to bytes
@@ -125,9 +135,15 @@ def login(request):
                     cursor.execute(settings_query, (user_details[0],))
                     user_settings = cursor.fetchone()
                     if user_settings:
+                        # Create a minimal Django User instance to tie with the Token
+                        user, created = User.objects.get_or_create(username=email, defaults={'email': email})
+
+                        # Generate or retrieve existing token
+                        token, _ = Token.objects.get_or_create(user=user)
                         print("User authenticated successfully")
                         return Response({
                             "message": "User authenticated successfully",
+                            "token": token.key,
                             "user_id": user_details[0],
                             "name": user_details[1],
                             "surname": user_details[2],
@@ -214,6 +230,8 @@ def signup(request):
 
 
 @api_view(['PUT'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def updateUserDetails(request):
     # Deserialize the UserDetails object
     user_id = request.data.get('user_id')
@@ -263,6 +281,8 @@ def updateUserDetails(request):
 
 
 @api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def insert_sound(request):
     data = request.data
     name = data.get('name')
@@ -307,6 +327,8 @@ def insert_sound(request):
 
 
 @api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def insert_observation(request):
     data = request.data
     observation_date = data.get('observationDate')
@@ -360,6 +382,8 @@ def insert_observation(request):
 
 
 @api_view(['DELETE'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def delete_observation(request):
     sound_id = request.data.get('soundId')
     upload_date = request.data.get("uploadDate")
@@ -411,6 +435,8 @@ def delete_observation(request):
 
 
 @api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def download_user_sounds(request):
     data = request.data
     user_id = data.get('user_id')
@@ -450,6 +476,8 @@ def download_user_sounds(request):
 
 
 @api_view(['DELETE'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def delete_sound(request):
     data = request.data
     blob_reference = data.get('blob_reference')
@@ -518,6 +546,8 @@ def upload_sound_to_blob(user_id, audio_name):
 
 
 @api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def get_creation_date_of_sounds(request):
     user_id = request.query_params.get('user_id')
 
@@ -555,6 +585,8 @@ def get_creation_date_of_sounds(request):
 
 
 @api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def get_observations_by_user(request, user_id):
     try:
         connection = mysql.connector.connect(
